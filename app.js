@@ -1,17 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, Button, Platform, Alert } from 'react-native';
+import { StyleSheet, Text, View, Button, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Notifications from 'expo-notifications';
+
+// Tells Android how to handle the alarm when the timer goes off
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,      // Show the message on screen
+    shouldPlaySound: true,      // Ring out loud
+    shouldVibrate: true,        // Buzz the phone
+  }),
+});
 
 export default function App() {
-  // Current time state
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
-  
-  // Alarm states
   const [alarmTime, setAlarmTime] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [isAlarmSet, setIsAlarmSet] = useState(false);
 
-  // Updates the live clock face every second
+  // Live clock display loop
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString());
@@ -19,16 +26,44 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // What happens when the user picks a time on the clock wheel
+  // Request permission to ring the phone and schedule the alarm
+  const scheduleAlarmNotification = async (targetDate) => {
+    // 1. Ask the user for permission to make noise
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+      alert('Permission to send notifications is required for the alarm to work!');
+      return;
+    }
+
+    // 2. Clear any old alarms so they don't overlap
+    await Notifications.cancelAllScheduledNotificationsAsync();
+
+    // 3. Hand the time over to Android's system scheduler
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "⏰ AbuClock Alarm!",
+        body: "Time to wake up! Your alarm is ringing.",
+        sound: true, 
+      },
+      trigger: {
+        date: targetDate, // Fires at the exact selected date and time
+      },
+    });
+
+    const formattedAlarm = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    alert(`🎯 Alarm armed for ${formattedAlarm}!`);
+  };
+
   const onTimeChange = (event, selectedDate) => {
-    setShowPicker(false); // Hide the picker wheel
+    setShowPicker(false);
     if (selectedDate) {
+      // If the picked time has already passed today, set it for tomorrow
+      if (selectedDate < new Date()) {
+        selectedDate.setDate(selectedDate.getDate() + 1);
+      }
       setAlarmTime(selectedDate);
       setIsAlarmSet(true);
-      
-      // Show a quick alert confirming the alarm
-      const formattedAlarm = selectedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      alert(`Alarm successfully set for ${formattedAlarm}!`);
+      scheduleAlarmNotification(selectedDate);
     }
   };
 
@@ -46,7 +81,6 @@ export default function App() {
           <Text style={styles.alarmStatus}>🔕 No alarm set currently</Text>
         )}
 
-        {/* Button to trigger the time picker wheel */}
         <Button 
           title="Set New Alarm" 
           color="#00E676" 
@@ -54,7 +88,6 @@ export default function App() {
         />
       </View>
 
-      {/* The hidden Android/iOS native clock wheel */}
       {showPicker && (
         <DateTimePicker
           value={alarmTime}
@@ -69,36 +102,9 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121212',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  titleText: {
-    fontSize: 16,
-    color: '#888888',
-    marginBottom: 5,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-  },
-  clockDisplay: {
-    fontSize: 60,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 40,
-  },
-  alarmSection: {
-    alignItems: 'center',
-    backgroundColor: '#1E1E1E',
-    padding: 20,
-    borderRadius: 15,
-    width: '80%',
-  },
-  alarmStatus: {
-    fontSize: 18,
-    color: '#AAAAAA',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#121212', justifyContent: 'center', alignItems: 'center' },
+  titleText: { fontSize: 16, color: '#888888', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 2 },
+  clockDisplay: { fontSize: 60, fontWeight: 'bold', color: '#ffffff', marginBottom: 40 },
+  alarmSection: { alignItems: 'center', backgroundColor: '#1E1E1E', padding: 20, borderRadius: 15, width: '80%' },
+  alarmStatus: { fontSize: 18, color: '#AAAAAA', marginBottom: 15, textAlign: 'center' },
 });
