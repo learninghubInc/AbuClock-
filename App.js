@@ -3,12 +3,12 @@ import { StyleSheet, Text, View, Button, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 
-// Tells Android how to handle the alarm when the timer goes off
+// 🚨 FORCE ANDROID TO MAKE NOISE AND VIBRATE 🚨
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,      // Show the message on screen
-    shouldPlaySound: true,      // Ring out loud
-    shouldVibrate: true,        // Buzz the phone
+    shouldShowAlert: true,
+    shouldPlaySound: true,  // Breaks through silence
+    shouldVibrate: true,    // Forces physical vibration
   }),
 });
 
@@ -18,46 +18,54 @@ export default function App() {
   const [showPicker, setShowPicker] = useState(false);
   const [isAlarmSet, setIsAlarmSet] = useState(false);
 
-  // Live clock display loop
   useEffect(() => {
+    // Set up a high-priority channel specifically for alarms so Android doesn't mute it
+    async function setupAlarmChannel() {
+      await Notifications.setNotificationChannelAsync('abuclock-alarm', {
+        name: 'AbuClock Alarms',
+        importance: Notifications.AndroidNotificationImportance.HIGH, // 🚨 Max importance
+        sound: 'default', // Uses system default alarm tone
+        vibrationPattern: [0, 250, 250, 250], // Continuous buzzing
+        enableVibrate: true,
+      });
+    }
+    setupAlarmChannel();
+
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Request permission to ring the phone and schedule the alarm
   const scheduleAlarmNotification = async (targetDate) => {
-    // 1. Ask the user for permission to make noise
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== 'granted') {
-      alert('Permission to send notifications is required for the alarm to work!');
+      alert('Permission required for the alarm to wake you up!');
       return;
     }
 
-    // 2. Clear any old alarms so they don't overlap
     await Notifications.cancelAllScheduledNotificationsAsync();
 
-    // 3. Hand the time over to Android's system scheduler
+    // Schedule the high-priority alarm
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "⏰ AbuClock Alarm!",
-        body: "Time to wake up! Your alarm is ringing.",
+        body: "Time to wake up! Your alarm is ringing out loud.",
         sound: true, 
       },
       trigger: {
-        date: targetDate, // Fires at the exact selected date and time
+        date: targetDate,
+        channelId: 'abuclock-alarm', // 🚨 Links to our high-priority loud channel
       },
     });
 
     const formattedAlarm = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    alert(`🎯 Alarm armed for ${formattedAlarm}!`);
+    alert(`🎯 Alarm armed out loud for ${formattedAlarm}!`);
   };
 
   const onTimeChange = (event, selectedDate) => {
     setShowPicker(false);
     if (selectedDate) {
-      // If the picked time has already passed today, set it for tomorrow
       if (selectedDate < new Date()) {
         selectedDate.setDate(selectedDate.getDate() + 1);
       }
@@ -75,10 +83,10 @@ export default function App() {
       <View style={styles.alarmSection}>
         {isAlarmSet ? (
           <Text style={styles.alarmStatus}>
-            🔔 Alarm armed for: {alarmTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            🔔 Armed for: {alarmTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         ) : (
-          <Text style={styles.alarmStatus}>🔕 No alarm set currently</Text>
+          <Text style={styles.alarmStatus}>🔕 No alarm active</Text>
         )}
 
         <Button 
